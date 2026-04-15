@@ -7,6 +7,7 @@ export default defineWorkersConfig({
         miniflare: {
           // Real D1 in-memory; Vectorize isn't supported by miniflare yet, so we mock the binding directly in tests
           d1Databases: ["DB"],
+          kvNamespaces: ["OAUTH_KV"],
           compatibilityDate: "2024-12-30",
           compatibilityFlags: ["nodejs_compat"],
           bindings: {
@@ -16,6 +17,10 @@ export default defineWorkersConfig({
             OPENAI_EXTRACTION_MODEL: "gpt-4.1-nano",
             NOTION_TRANSCRIPTS_DATA_SOURCE_ID: "test-transcripts-ds",
             NOTION_FOLLOWUPS_DATA_SOURCE_ID: "test-followups-ds",
+            GITHUB_CLIENT_ID: "gh-client-test",
+            GITHUB_CLIENT_SECRET: "gh-secret-test",
+            ALLOWED_USERS: "jchu96",
+            BASE_URL: "https://bluedot-rag.test.workers.dev",
           },
         },
       },
