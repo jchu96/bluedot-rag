@@ -51,8 +51,8 @@ interface CliResult {
   stderr: string;
 }
 
-function runCli(cmd: string, args: string[]): CliResult {
-  const result = spawnSync(cmd, args, { encoding: "utf8" });
+function runCli(cmd: string, args: string[], input?: string): CliResult {
+  const result = spawnSync(cmd, args, { encoding: "utf8", input });
   return {
     status: result.status ?? 1,
     stdout: result.stdout ?? "",
@@ -60,8 +60,17 @@ function runCli(cmd: string, args: string[]): CliResult {
   };
 }
 
+/**
+ * Push a secret to the deployed Worker by piping the value through stdin to
+ * `wrangler secret put NAME`. Wrangler prompts interactively when stdin is a
+ * TTY; we avoid the prompt by passing the value via stdin directly.
+ */
+function putSecret(name: string, value: string): CliResult {
+  return runCli("npx", ["wrangler", "secret", "put", name], value);
+}
+
 async function step1_checkWranglerAuth(): Promise<void> {
-  header("[1/8] Checking wrangler authentication");
+  header("[1/9] Checking wrangler authentication");
   const r = runCli("npx", ["wrangler", "whoami"]);
   if (r.status !== 0) {
     fail(
@@ -74,7 +83,7 @@ async function step1_checkWranglerAuth(): Promise<void> {
 }
 
 async function step2_provisionD1(): Promise<string> {
-  header("[2/8] Provisioning Cloudflare D1");
+  header("[2/9] Provisioning Cloudflare D1");
   const list = runCli("npx", ["wrangler", "d1", "list", "--json"]);
   if (list.status !== 0) fail(`Failed to list D1 databases: ${list.stderr || list.stdout}`);
 
@@ -102,7 +111,7 @@ async function step2_provisionD1(): Promise<string> {
 }
 
 async function step3_provisionVectorize(): Promise<void> {
-  header("[3/8] Provisioning Cloudflare Vectorize");
+  header("[3/9] Provisioning Cloudflare Vectorize");
   const list = runCli("npx", ["wrangler", "vectorize", "list", "--json"]);
   if (list.status !== 0) fail(`Failed to list Vectorize indexes: ${list.stderr || list.stdout}`);
 
@@ -132,7 +141,7 @@ async function step3_provisionVectorize(): Promise<void> {
 }
 
 async function step4_writeWranglerTomlAndMigrate(d1Id: string): Promise<void> {
-  header("[4/8] Updating wrangler.toml + applying database migration");
+  header("[4/9] Updating wrangler.toml + applying database migration");
 
   let toml = await readFile("wrangler.toml", "utf8");
 
@@ -176,7 +185,7 @@ async function step5_setupNotion(): Promise<{
   transcriptsDataSourceId: string;
   followupsDataSourceId: string;
 }> {
-  header("[5/8] Notion setup");
+  header("[5/9] Notion setup");
   info("You'll need:");
   info("  - A Notion integration token (https://www.notion.so/profile/integrations)");
   info("  - A parent page ID (the page where the new databases will live)");
@@ -309,7 +318,7 @@ async function createNotionDatabase(
 }
 
 async function step6_openaiKey(): Promise<string> {
-  header("[6/8] OpenAI API key");
+  header("[6/9] OpenAI API key");
   const key = (await rl.question("  OpenAI API key (sk-...): ")).trim();
   if (!key.startsWith("sk-")) fail(`Key must start with sk-`);
 
@@ -341,7 +350,7 @@ async function step8_setupMcpOAuth(): Promise<{
   githubClientId: string;
   githubClientSecret: string;
 } | null> {
-  header("[8/8] Setting up MCP OAuth (GitHub)");
+  header("[8/9] Setting up MCP OAuth (GitHub)");
 
   const enableAnswer = (
     await rl.question(
@@ -441,7 +450,7 @@ async function step7_writeConfig(input: {
     githubClientSecret: string;
   } | null;
 }): Promise<void> {
-  header("[7/8] Writing config");
+  header("[7/9] Writing config");
 
   // .dev.vars
   const devVarsLines = [
@@ -500,6 +509,63 @@ async function step7_writeConfig(input: {
   ok(`Wrote bindings + vars to wrangler.toml`);
 }
 
+/**
+ * Push every collected secret to the deployed Worker via `wrangler secret put`
+ * with the value piped on stdin. Skips cleanly if the user declines, and
+ * returns whether all known secrets were actually synced.
+ */
+async function step9_syncSecretsToProd(input: {
+  openaiKey: string;
+  notionToken: string;
+  mcp: {
+    kvNamespaceId: string;
+    allowedUsers: string;
+    githubClientId: string;
+    githubClientSecret: string;
+  } | null;
+}): Promise<boolean> {
+  header("[9/9] Syncing secrets to production Worker");
+
+  const ans = (
+    await rl.question(
+      "  Push these secrets to Cloudflare now? (Y/n — skip if you only run local dev): ",
+    )
+  )
+    .trim()
+    .toLowerCase();
+  if (ans === "n" || ans === "no") {
+    warn("Skipped. Your .dev.vars is written; prod secrets unchanged.");
+    return false;
+  }
+
+  const targets: Array<{ name: string; value: string }> = [
+    { name: "OPENAI_API_KEY", value: input.openaiKey },
+    { name: "NOTION_INTEGRATION_KEY", value: input.notionToken },
+  ];
+  if (input.mcp) {
+    targets.push(
+      { name: "GITHUB_CLIENT_ID", value: input.mcp.githubClientId },
+      { name: "GITHUB_CLIENT_SECRET", value: input.mcp.githubClientSecret },
+    );
+  }
+
+  let ok_count = 0;
+  for (const t of targets) {
+    info(`Setting ${t.name}...`);
+    const r = putSecret(t.name, t.value);
+    if (r.status !== 0) {
+      warn(
+        `Failed to set ${t.name} (wrangler exited ${r.status}). You can run \`npx wrangler secret put ${t.name}\` manually. Details:\n${(r.stderr || r.stdout).slice(0, 400)}`,
+      );
+      continue;
+    }
+    ok(`${t.name} pushed`);
+    ok_count++;
+  }
+
+  return ok_count === targets.length;
+}
+
 async function main(): Promise<void> {
   console.log("\n\x1b[1mbluedot-rag — Setup\x1b[0m");
   console.log("====================");
@@ -527,15 +593,26 @@ async function main(): Promise<void> {
     mcp,
   });
 
+  // Step 9: push the collected secrets to the deployed Worker.
+  const pushedAll = await step9_syncSecretsToProd({
+    openaiKey,
+    notionToken: tokenForVars,
+    mcp,
+  });
+
   console.log("\n\x1b[1m\x1b[32mSetup complete!\x1b[0m\n");
   console.log("Next steps:");
   console.log("  1. Deploy:    npx wrangler deploy");
-  console.log("  2. In Cloudflare, set production secrets (skip if you'll only run local dev):");
-  console.log("     npx wrangler secret put OPENAI_API_KEY");
-  console.log("     npx wrangler secret put NOTION_INTEGRATION_KEY");
-  if (mcp) {
-    console.log("     npx wrangler secret put GITHUB_CLIENT_ID");
-    console.log("     npx wrangler secret put GITHUB_CLIENT_SECRET");
+  if (!pushedAll) {
+    console.log("  2. Push any remaining production secrets you skipped:");
+    console.log("     npx wrangler secret put OPENAI_API_KEY");
+    console.log("     npx wrangler secret put NOTION_INTEGRATION_KEY");
+    if (mcp) {
+      console.log("     npx wrangler secret put GITHUB_CLIENT_ID");
+      console.log("     npx wrangler secret put GITHUB_CLIENT_SECRET");
+    }
+  } else {
+    console.log("  2. \x1b[32mProduction secrets pushed.\x1b[0m");
   }
   console.log("  3. In Bluedot, configure a webhook pointing at your worker URL.");
   console.log("     Bluedot will give you a signing secret. Then:");
