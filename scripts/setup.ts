@@ -61,7 +61,7 @@ function runCli(cmd: string, args: string[]): CliResult {
 }
 
 async function step1_checkWranglerAuth(): Promise<void> {
-  header("[1/7] Checking wrangler authentication");
+  header("[1/8] Checking wrangler authentication");
   const r = runCli("npx", ["wrangler", "whoami"]);
   if (r.status !== 0) {
     fail(
@@ -74,7 +74,7 @@ async function step1_checkWranglerAuth(): Promise<void> {
 }
 
 async function step2_provisionD1(): Promise<string> {
-  header("[2/7] Provisioning Cloudflare D1");
+  header("[2/8] Provisioning Cloudflare D1");
   const list = runCli("npx", ["wrangler", "d1", "list", "--json"]);
   if (list.status !== 0) fail(`Failed to list D1 databases: ${list.stderr || list.stdout}`);
 
@@ -102,7 +102,7 @@ async function step2_provisionD1(): Promise<string> {
 }
 
 async function step3_provisionVectorize(): Promise<void> {
-  header("[3/7] Provisioning Cloudflare Vectorize");
+  header("[3/8] Provisioning Cloudflare Vectorize");
   const list = runCli("npx", ["wrangler", "vectorize", "list", "--json"]);
   if (list.status !== 0) fail(`Failed to list Vectorize indexes: ${list.stderr || list.stdout}`);
 
@@ -132,7 +132,7 @@ async function step3_provisionVectorize(): Promise<void> {
 }
 
 async function step4_writeWranglerTomlAndMigrate(d1Id: string): Promise<void> {
-  header("[4/7] Updating wrangler.toml + applying database migration");
+  header("[4/8] Updating wrangler.toml + applying database migration");
 
   let toml = await readFile("wrangler.toml", "utf8");
 
@@ -176,7 +176,7 @@ async function step5_setupNotion(): Promise<{
   transcriptsDataSourceId: string;
   followupsDataSourceId: string;
 }> {
-  header("[5/7] Notion setup");
+  header("[5/8] Notion setup");
   info("You'll need:");
   info("  - A Notion integration token (https://www.notion.so/profile/integrations)");
   info("  - A parent page ID (the page where the new databases will live)");
@@ -309,7 +309,7 @@ async function createNotionDatabase(
 }
 
 async function step6_openaiKey(): Promise<string> {
-  header("[6/7] OpenAI API key");
+  header("[6/8] OpenAI API key");
   const key = (await rl.question("  OpenAI API key (sk-...): ")).trim();
   if (!key.startsWith("sk-")) fail(`Key must start with sk-`);
 
@@ -335,22 +335,127 @@ async function step6_openaiKey(): Promise<string> {
   return key;
 }
 
+async function step8_setupMcpOAuth(): Promise<{
+  kvNamespaceId: string;
+  allowedUsers: string;
+  githubClientId: string;
+  githubClientSecret: string;
+} | null> {
+  header("[8/8] Setting up MCP OAuth (GitHub)");
+
+  const enableAnswer = (
+    await rl.question(
+      "  Enable MCP server with GitHub OAuth? Needed for querying calls from Claude.ai (y/n): ",
+    )
+  )
+    .trim()
+    .toLowerCase();
+  if (enableAnswer !== "y" && enableAnswer !== "yes") {
+    warn("Skipping MCP setup. You can re-run this script later to add it.");
+    return null;
+  }
+
+  // KV namespace for OAuth state + tokens.
+  info("Looking for existing OAUTH_KV namespace...");
+  const listKv = runCli("npx", ["wrangler", "kv", "namespace", "list"]);
+  let kvId = "";
+  try {
+    const parsed = JSON.parse(listKv.stdout) as Array<{ id: string; title: string }>;
+    const match = parsed.find((n) => n.title === "OAUTH_KV");
+    if (match) {
+      kvId = match.id;
+      ok(`Using existing OAUTH_KV namespace (id ${kvId})`);
+    }
+  } catch {
+    // fallthrough to create
+  }
+  if (!kvId) {
+    info("Creating OAUTH_KV namespace...");
+    const create = runCli("npx", [
+      "wrangler",
+      "kv",
+      "namespace",
+      "create",
+      "OAUTH_KV",
+    ]);
+    const m = create.stdout.match(/id\s*=\s*"([0-9a-f]+)"/i);
+    if (!m) {
+      fail(
+        `Could not parse namespace id from wrangler output:\n${create.stdout}\n${create.stderr}`,
+      );
+    }
+    kvId = m[1];
+    ok(`Created OAUTH_KV namespace (id ${kvId})`);
+  }
+
+  // GitHub OAuth app walkthrough
+  console.log("");
+  console.log("  You'll need a GitHub OAuth App. If you don't have one:");
+  console.log("    1. Open \x1b[4mhttps://github.com/settings/developers\x1b[0m");
+  console.log("    2. Click \"New OAuth App\"");
+  console.log("    3. Application name: something like `bluedot-rag MCP`");
+  console.log(
+    "    4. Homepage URL: your worker URL (e.g. `https://bluedot-rag.<account>.workers.dev`)",
+  );
+  console.log(
+    "    5. Authorization callback URL: the same worker URL + `/auth/github/callback`",
+  );
+  console.log("    6. Generate a client secret and copy both values.");
+  console.log("");
+
+  const githubClientId = (
+    await rl.question("  GitHub OAuth App — Client ID: ")
+  ).trim();
+  if (!githubClientId) fail("GITHUB_CLIENT_ID required");
+
+  const githubClientSecret = (
+    await rl.question("  GitHub OAuth App — Client Secret: ")
+  ).trim();
+  if (!githubClientSecret) fail("GITHUB_CLIENT_SECRET required");
+
+  const allowedUsers = (
+    await rl.question(
+      "  Allowed GitHub usernames (comma-separated; case-insensitive): ",
+    )
+  ).trim();
+  if (!allowedUsers) fail("At least one allowed GitHub username required");
+
+  return {
+    kvNamespaceId: kvId,
+    allowedUsers,
+    githubClientId,
+    githubClientSecret,
+  };
+}
+
 async function step7_writeConfig(input: {
   d1Id: string;
   notionToken: string;
   openaiKey: string;
   transcriptsDataSourceId: string;
   followupsDataSourceId: string;
+  mcp?: {
+    kvNamespaceId: string;
+    allowedUsers: string;
+    githubClientId: string;
+    githubClientSecret: string;
+  } | null;
 }): Promise<void> {
-  header("[7/7] Writing config");
+  header("[7/8] Writing config");
 
   // .dev.vars
-  const devVars = [
+  const devVarsLines = [
     `OPENAI_API_KEY="${input.openaiKey}"`,
     `NOTION_INTEGRATION_KEY="${input.notionToken}"`,
     `BLUEDOT_WEBHOOK_SECRET="whsec_set_after_bluedot_config"`,
-    "",
-  ].join("\n");
+  ];
+  if (input.mcp) {
+    devVarsLines.push(
+      `GITHUB_CLIENT_ID="${input.mcp.githubClientId}"`,
+      `GITHUB_CLIENT_SECRET="${input.mcp.githubClientSecret}"`,
+    );
+  }
+  const devVars = devVarsLines.join("\n") + "\n";
   await writeFile(".dev.vars", devVars, "utf8");
   ok(`Wrote .dev.vars`);
 
@@ -364,8 +469,35 @@ async function step7_writeConfig(input: {
     /NOTION_FOLLOWUPS_DATA_SOURCE_ID\s*=\s*"[^"]*"/,
     `NOTION_FOLLOWUPS_DATA_SOURCE_ID = "${input.followupsDataSourceId}"`,
   );
+
+  if (input.mcp) {
+    // Set ALLOWED_USERS in [vars]
+    if (/ALLOWED_USERS\s*=\s*"[^"]*"/.test(toml)) {
+      toml = toml.replace(
+        /ALLOWED_USERS\s*=\s*"[^"]*"/,
+        `ALLOWED_USERS = "${input.mcp.allowedUsers}"`,
+      );
+    } else {
+      toml = toml.replace(
+        /(\[vars\][^\[]*?)(\n\[)/,
+        `$1ALLOWED_USERS = "${input.mcp.allowedUsers}"\n$2`,
+      );
+    }
+
+    // Set KV binding id
+    const kvBinding = `[[kv_namespaces]]\nbinding = "OAUTH_KV"\nid = "${input.mcp.kvNamespaceId}"\n`;
+    if (/\[\[kv_namespaces\]\]/.test(toml)) {
+      toml = toml.replace(
+        /\[\[kv_namespaces\]\]\s*\nbinding = "OAUTH_KV"\s*\nid = "[^"]*"/,
+        kvBinding.trim(),
+      );
+    } else {
+      toml += `\n${kvBinding}`;
+    }
+  }
+
   await writeFile("wrangler.toml", toml, "utf8");
-  ok(`Wrote Notion data source IDs to wrangler.toml`);
+  ok(`Wrote bindings + vars to wrangler.toml`);
 }
 
 async function main(): Promise<void> {
@@ -385,12 +517,14 @@ async function main(): Promise<void> {
   const openaiKey = await step6_openaiKey();
   const tokenForVars = (await rl.question("\n  Confirm Notion token to save (paste again): ")).trim();
   if (!tokenForVars) fail("Notion token required");
+  const mcp = await step8_setupMcpOAuth();
   await step7_writeConfig({
     d1Id,
     notionToken: tokenForVars,
     openaiKey,
     transcriptsDataSourceId: notion.transcriptsDataSourceId,
     followupsDataSourceId: notion.followupsDataSourceId,
+    mcp,
   });
 
   console.log("\n\x1b[1m\x1b[32mSetup complete!\x1b[0m\n");
@@ -399,10 +533,20 @@ async function main(): Promise<void> {
   console.log("  2. In Cloudflare, set production secrets (skip if you'll only run local dev):");
   console.log("     npx wrangler secret put OPENAI_API_KEY");
   console.log("     npx wrangler secret put NOTION_INTEGRATION_KEY");
+  if (mcp) {
+    console.log("     npx wrangler secret put GITHUB_CLIENT_ID");
+    console.log("     npx wrangler secret put GITHUB_CLIENT_SECRET");
+  }
   console.log("  3. In Bluedot, configure a webhook pointing at your worker URL.");
   console.log("     Bluedot will give you a signing secret. Then:");
   console.log("     npx wrangler secret put BLUEDOT_WEBHOOK_SECRET");
   console.log("  4. Test by recording a Bluedot meeting; check `npx wrangler tail`.");
+  if (mcp) {
+    console.log("  5. Connect to Claude.ai:");
+    console.log("     Add your MCP server URL (worker URL + `/mcp`) in Claude.ai integrations.");
+    console.log("     Complete the GitHub OAuth flow in the browser. Allowed users:");
+    console.log(`     \x1b[36m${mcp.allowedUsers}\x1b[0m`);
+  }
   console.log("");
   console.log("Notion databases created:");
   console.log(`  Followups:        https://www.notion.so/${notion.followupsDbId.replace(/-/g, "")}`);
