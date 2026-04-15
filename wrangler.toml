@@ -6,8 +6,8 @@ compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 # Vars (non-secret, set via setup script)
 [vars]
 OPENAI_EXTRACTION_MODEL = "gpt-5.4-nano"
-NOTION_TRANSCRIPTS_DATA_SOURCE_ID = "e22e1006-52c9-48f3-85c6-a55c5cc6d991"
-NOTION_FOLLOWUPS_DATA_SOURCE_ID = "f04d875e-00a1-4241-8ee1-c73217310212"
+NOTION_TRANSCRIPTS_DATA_SOURCE_ID = "70c2fa08-d518-4704-810c-e0061941ebe1"
+NOTION_FOLLOWUPS_DATA_SOURCE_ID = "d2a8aa9c-c1c5-4990-87a5-a20a10e2c5fb"
 BASE_URL = "https://bluedot-rag.jeremy-chu.workers.dev"
 ALLOWED_USERS = "jchu96"
 # GITHUB_CLIENT_ID is a public value but set via setup script / secret for convenience
