@@ -457,14 +457,14 @@ async function step6_openaiKey(existing?: string): Promise<string> {
     fail(`OpenAI rejected the key (${resp.status}): ${text.slice(0, 200)}`);
   }
   const data = (await resp.json()) as { data: Array<{ id: string }> };
-  const hasModel = data.data.some((m) => m.id === "gpt-4.1-nano");
+  const hasModel = data.data.some((m) => m.id === "gpt-5-mini");
   if (!hasModel) {
     warn(
-      `gpt-4.1-nano not present in your account's available models — defaulting will fail. ` +
+      `gpt-5-mini not present in your account's available models — defaulting will fail. ` +
         `Set OPENAI_EXTRACTION_MODEL after setup to a model you have access to.`,
     );
   } else {
-    ok(`Key valid; gpt-4.1-nano available`);
+    ok(`Key valid; gpt-5-mini available`);
   }
   return key;
 }

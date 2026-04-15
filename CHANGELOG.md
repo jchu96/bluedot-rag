@@ -40,7 +40,7 @@ Initial public release. Bluedot → Cloudflare D1 + Vectorize → Notion Followu
 ### Added
 
 - Cloudflare Worker that verifies Svix-signed Bluedot webhooks and handles both `meeting.transcript.created` + `meeting.summary.created` event types.
-- OpenAI structured extraction (`gpt-4.1-nano` via json_schema) to pull `{ title, summary, action_items[], participants[] }` from Bluedot's summary text.
+- OpenAI structured extraction (`gpt-5-mini` via json_schema) to pull `{ title, summary, action_items[], participants[] }` from Bluedot's summary text.
 - OpenAI embeddings (`text-embedding-3-small`, 1536d) on chunked transcript text, upserted to Cloudflare Vectorize with deterministic IDs (`{transcript_id}-{chunk_index}`).
 - Cloudflare D1 `transcripts` table with `UNIQUE(video_id)` constraint for idempotent concurrent writes.
 - Notion integration (direct `fetch`, not the SDK) that creates one page per meeting in a Call Transcripts DB and one row per action item in a Followups DB with `Status = Inbox`.

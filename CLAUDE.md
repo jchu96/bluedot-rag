@@ -9,7 +9,7 @@ Cloudflare Worker that ingests Bluedot meeting transcripts → OpenAI extraction
 | Webhook + processing | Cloudflare Workers |
 | Transcript store | Cloudflare D1 (SQLite, Drizzle schema) |
 | Embeddings | Cloudflare Vectorize (1536d, cosine) |
-| LLM | OpenAI `gpt-4.1-nano` (structured outputs) + `text-embedding-3-small` |
+| LLM | OpenAI `gpt-5-mini` (structured outputs) + `text-embedding-3-small` |
 | Output | Notion API (direct fetch — NOT `@notionhq/client`, broken in workerd) |
 | MCP server | `@modelcontextprotocol/sdk` Streamable HTTP (stateless mode) |
 | MCP auth | `@cloudflare/workers-oauth-provider` + GitHub OAuth, KV-backed |
@@ -27,6 +27,7 @@ Single user (GitHub username allowlist via `ALLOWED_USERS` env). Friends fork to
 - **MCP transport is stateless** — one transport per request, `enableJsonResponse: true`, no `Mcp-Session-Id`. No cross-request state; simpler to reason about.
 - **MCP tools are pure functions** colocated under `src/mcp/tools/` — each accepts `(args, env, deps?)` and returns a `{ content: [{ type: "text", text }] }` shape. Tests call these directly (no SDK) for fast, isolated unit tests.
 - **`src/mcp/handler.ts` dynamic-imports `./tools`** so loading the OAuth-wrapped worker in non-MCP tests doesn't pull the SDK + ajv into scope (vitest-pool-workers can't resolve ajv's internal JSON import in its ESM shim). If you add new MCP wiring, keep the dynamic-import boundary.
+- **Extraction takes `meetingDate`** — `extractFromSummary()` expects the meeting's date so the model can resolve "Friday" / "Monday" into ISO `YYYY-MM-DD` for Notion's `Due` field. Without it, all `due_date`s fall back to natural-language phrases (which still render in the title but don't populate the Date property). Always pass `normalized.createdAt` from new call sites. Ambiguous phrases ("next week", "soon") are preserved verbatim by design.
 
 ## Common Tasks
 

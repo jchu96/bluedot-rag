@@ -13,6 +13,8 @@ export interface ExtractInput {
   title?: string;
   /** Optional: attendee emails from Bluedot */
   attendees?: string[];
+  /** Optional: meeting date (used to resolve relative phrases like "Friday" into ISO) */
+  meetingDate?: Date;
 }
 
 export interface ExtractOptions {
@@ -22,16 +24,33 @@ export interface ExtractOptions {
   retryDelayMs?: number;
 }
 
-export const DEFAULT_MODEL = "gpt-4.1-nano";
+export const DEFAULT_MODEL = "gpt-5-mini";
 const MAX_SUMMARY_CHARS = 30_000;
 
-const SYSTEM_PROMPT = `You are an expert assistant that extracts structured follow-up tasks from a meeting summary.
+const SYSTEM_PROMPT = `You extract action items and participants from a meeting summary. Be precise and never invent information not present in the source.
 
-Given a meeting summary (already condensed), produce:
-- action_items: discrete tasks that someone committed to do. Capture owner when identifiable ("Andy will...") and due_date in natural language ("Friday", "next week", "2026-05-01") when stated. Skip vague suggestions; only concrete commitments.
-- participants: people who participated, with role/title if mentioned
+# Action items
+A concrete commitment someone made to do something after the meeting.
 
-Be specific and actionable. Each action item should be something a human could check off later.`;
+Include:
+- Explicit commitments: "Andy will send the proposal", "I'll follow up next week"
+- Assigned tasks: "Maria to review the draft by Friday"
+
+Exclude:
+- Topics discussed without a commitment
+- Vague aspirations ("we should probably look into that")
+- Decisions already finalized in the meeting
+- Questions raised but not assigned to anyone
+
+For each action item:
+- task: one sentence, imperative voice, specific enough to check off ("Send Q2 forecast to Jen" not "handle forecast")
+- owner: the person committed. Prefer the exact name used in the summary. If an attendees list is provided and a first-name-only reference unambiguously matches one attendee, use that full name. Use null for "we"/"the team"/unclear.
+- due_date: if the summary states a date, return ISO "YYYY-MM-DD" when you can resolve it unambiguously using the provided meeting date as "today" (e.g. "Friday" → the next Friday after the meeting date; "next week" is NOT unambiguous — keep as phrase). If the summary already gives an ISO date, return it as-is. If unambiguous resolution isn't possible, preserve the original phrase verbatim. Use null if unstated. Never guess a year.
+
+# Participants
+People who took part, as identified in the summary. Use null for any field not stated. Never fabricate emails or titles.
+
+If nothing qualifies, return empty arrays. Do not invent content to fill them.`;
 
 export const EXTRACTION_SCHEMA = {
   type: "object" as const,
@@ -69,6 +88,9 @@ export const EXTRACTION_SCHEMA = {
 
 function buildUserMessage(input: ExtractInput): string {
   const titleBlock = input.title ? `Meeting title: ${input.title}\n\n` : "";
+  const dateBlock = input.meetingDate
+    ? `Meeting date: ${input.meetingDate.toISOString().slice(0, 10)}\n\n`
+    : "";
   const attendeesBlock =
     input.attendees && input.attendees.length > 0
       ? `Attendees: ${input.attendees.join(", ")}\n\n`
@@ -79,12 +101,12 @@ function buildUserMessage(input: ExtractInput): string {
     summary = summary.slice(0, MAX_SUMMARY_CHARS) + "\n\n[truncated]";
   }
 
-  return `${titleBlock}${attendeesBlock}Bluedot summary:
+  return `${titleBlock}${dateBlock}${attendeesBlock}Bluedot summary:
 """
 ${summary}
 """
 
-Extract action items + participants per the schema.`;
+Extract action items + participants per the schema. Use the attendees list to disambiguate owner names when a first-name reference unambiguously matches one attendee.`;
 }
 
 function cleanResult(raw: ExtractedFromSummary): ExtractedFromSummary {

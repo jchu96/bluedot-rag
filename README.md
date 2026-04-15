@@ -59,7 +59,7 @@ Then you ask Claude.ai things like:
 | Service | Tier | Purpose |
 |---------|------|---------|
 | [Cloudflare](https://dash.cloudflare.com) | Workers free + Vectorize paid (~$5/mo) | Hosting + D1 + Vectorize + KV |
-| [OpenAI](https://platform.openai.com) | Pay-as-you-go (~$0.001/call) | Extraction (`gpt-4.1-nano`) + embeddings (`text-embedding-3-small`) |
+| [OpenAI](https://platform.openai.com) | Pay-as-you-go (~$0.001/call) | Extraction (`gpt-5-mini`) + embeddings (`text-embedding-3-small`) |
 | [Notion](https://notion.so) + [integration](https://www.notion.so/profile/integrations) | Free | Transcript pages + Followups inbox |
 | [Bluedot](https://bluedothq.com) | Trial | Source of meeting recordings |
 | [GitHub OAuth App](https://github.com/settings/developers) | Free | MCP auth (optional — only if connecting Claude.ai) |
@@ -149,7 +149,7 @@ Deep-dive: [`docs/architecture.md`](./docs/architecture.md).
 | Webhook + MCP | Cloudflare Workers + Hono |
 | Transcript store | Cloudflare D1 (SQLite, Drizzle schema) |
 | Embeddings | Cloudflare Vectorize (1536d, cosine, HNSW) |
-| LLM | OpenAI — `gpt-4.1-nano` (extraction, json_schema) + `text-embedding-3-small` |
+| LLM | OpenAI — `gpt-5-mini` (extraction, json_schema) + `text-embedding-3-small` |
 | Output | Notion API (direct `fetch` — **not** `@notionhq/client`) |
 | MCP transport | `@modelcontextprotocol/sdk` Streamable HTTP, stateless mode |
 | MCP auth | `@cloudflare/workers-oauth-provider` + GitHub OAuth |
@@ -209,7 +209,7 @@ Set via `wrangler.toml` `[vars]` for non-secret config and `wrangler secret put`
 
 | Variable | Default | Notes |
 |----------|---------|-------|
-| `OPENAI_EXTRACTION_MODEL` | `gpt-4.1-nano` | Override to upgrade |
+| `OPENAI_EXTRACTION_MODEL` | `gpt-5-mini` | Override to upgrade |
 | `NOTION_TRANSCRIPTS_DATA_SOURCE_ID` | — | Set by setup script |
 | `NOTION_FOLLOWUPS_DATA_SOURCE_ID` | — | Set by setup script |
 | `BASE_URL` | — | Public worker origin; used for OAuth callback URL construction |

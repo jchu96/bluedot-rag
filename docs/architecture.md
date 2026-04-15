@@ -128,7 +128,7 @@ sequenceDiagram
         W->>D: UPSERT (raw_text, participants)
         W->>V: upsert by deterministic ID
     else summary event
-        W->>O: extract (gpt-4.1-nano, json_schema)
+        W->>O: extract (gpt-5-mini, json_schema)
         O-->>W: {title, summary, action_items[], participants[]}
         W->>D: UPSERT (summary, action_items)
     end

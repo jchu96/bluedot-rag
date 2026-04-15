@@ -174,6 +174,7 @@ async function handleSummaryEvent(
         summary: normalized.summaryText,
         title: normalized.title,
         attendees: normalized.attendees,
+        meetingDate: normalized.createdAt,
       },
       {
         client: deps.openai,

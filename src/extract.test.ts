@@ -110,6 +110,6 @@ describe("extractFromSummary", () => {
   it("uses default model when not specified", async () => {
     const { client, create } = fakeOpenAI({});
     await extractFromSummary({ summary: "x" }, { client });
-    expect(((create.mock.calls[0] as never[])[0] as { model: string }).model).toBe("gpt-4.1-nano");
+    expect(((create.mock.calls[0] as never[])[0] as { model: string }).model).toBe("gpt-5-mini");
   });
 });

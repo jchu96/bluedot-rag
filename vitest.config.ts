@@ -14,7 +14,7 @@ export default defineWorkersConfig({
             OPENAI_API_KEY: "sk-test-openai",
             NOTION_INTEGRATION_KEY: "ntn_test",
             BLUEDOT_WEBHOOK_SECRET: "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
-            OPENAI_EXTRACTION_MODEL: "gpt-4.1-nano",
+            OPENAI_EXTRACTION_MODEL: "gpt-5-mini",
             NOTION_TRANSCRIPTS_DATA_SOURCE_ID: "test-transcripts-ds",
             NOTION_FOLLOWUPS_DATA_SOURCE_ID: "test-followups-ds",
             GITHUB_CLIENT_ID: "gh-client-test",
