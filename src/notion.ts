@@ -56,11 +56,36 @@ function bulletedItem(content: string) {
   };
 }
 
+/**
+ * Notion Date property requires ISO 8601 (YYYY-MM-DD or full datetime).
+ * OpenAI often returns natural language ("Friday", "next week") — drop those
+ * in the structured Date field but keep the original text in the task name
+ * so the human triaging the followup can see it.
+ */
+function parseIsoDate(input: string | undefined): { date: { start: string } | null } {
+  if (!input) return { date: null };
+  // Accept YYYY-MM-DD or full ISO 8601; reject anything else
+  if (/^\d{4}-\d{2}-\d{2}(T|$)/.test(input)) {
+    return { date: { start: input } };
+  }
+  return { date: null };
+}
+
 function formatActionItem(item: ActionItem): string {
   const parts: string[] = [item.task];
   if (item.owner) parts.push(`— ${item.owner}`);
   if (item.due_date) parts.push(`(due ${item.due_date})`);
   return parts.join(" ");
+}
+
+/**
+ * For followup row title: include due_date inline if it's natural language
+ * (since the structured Date field rejects it), so the human triaging sees it.
+ */
+function followupTitle(task: string, due_date: string | undefined): string {
+  if (!due_date) return task;
+  if (/^\d{4}-\d{2}-\d{2}(T|$)/.test(due_date)) return task; // ISO goes to Date field
+  return `${task} (due ${due_date})`;
 }
 
 /**
@@ -78,10 +103,10 @@ export function buildFollowupRowBody(input: FollowupInput): {
   return {
     parent: { type: "data_source_id", data_source_id: input.dataSourceId },
     properties: {
-      Name: { title: [text(input.task.slice(0, NAME_MAX))] },
+      Name: { title: [text(followupTitle(input.task, input.due_date).slice(0, NAME_MAX))] },
       Status: { select: { name: "Inbox" } },
       Priority: { select: { name: "P2" } },
-      Due: input.due_date ? { date: { start: input.due_date } } : { date: null },
+      Due: parseIsoDate(input.due_date),
       Owner: { rich_text: [text((input.owner ?? "").slice(0, RICH_TEXT_MAX))] },
       Source: { select: { name: "Bluedot" } },
       "Source Link": input.meetingUrl ? { url: input.meetingUrl } : { url: null },

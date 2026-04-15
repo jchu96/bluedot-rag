@@ -22,7 +22,7 @@ describe("buildFollowupRowBody", () => {
     expect(body.parent).toEqual({ type: "data_source_id", data_source_id: "ds_followups" });
     const props = body.properties as Record<string, unknown>;
     expect((props.Name as { title: Array<{ text: { content: string } }> }).title[0].text.content)
-      .toBe("Send the deck");
+      .toBe("Send the deck (due Friday)");
     expect(props.Status).toEqual({ select: { name: "Inbox" } });
     expect(props.Source).toEqual({ select: { name: "Bluedot" } });
   });
@@ -34,9 +34,35 @@ describe("buildFollowupRowBody", () => {
       meetingTitle: "x",
       videoId: "v",
     });
-    const props = body.properties as Record<string, { rich_text?: Array<{ text: { content: string } }> }>;
+    const props = body.properties as Record<string, { rich_text?: Array<{ text: { content: string } }>; date?: unknown }>;
     expect(props.Owner.rich_text?.[0]?.text.content ?? "").toBe("");
-    expect(props.Due).toEqual({ date: null });
+    expect(props.Due.date).toBeNull();
+  });
+
+  it("preserves natural-language due_date in title, sets Date field to null", () => {
+    const body = buildFollowupRowBody({
+      dataSourceId: "ds",
+      task: "Send notes",
+      due_date: "Friday",
+      meetingTitle: "x",
+      videoId: "v",
+    });
+    const title = (body.properties as { Name: { title: Array<{ text: { content: string } }> } }).Name.title[0].text.content;
+    expect(title).toBe("Send notes (due Friday)");
+    expect((body.properties as { Due: { date: unknown } }).Due.date).toBeNull();
+  });
+
+  it("uses ISO due_date in Date field, omits from title", () => {
+    const body = buildFollowupRowBody({
+      dataSourceId: "ds",
+      task: "Send notes",
+      due_date: "2026-05-01",
+      meetingTitle: "x",
+      videoId: "v",
+    });
+    const title = (body.properties as { Name: { title: Array<{ text: { content: string } }> } }).Name.title[0].text.content;
+    expect(title).toBe("Send notes");
+    expect((body.properties as { Due: { date: { start: string } } }).Due.date.start).toBe("2026-05-01");
   });
 
   it("escapes very long task names to fit Notion limits", () => {
