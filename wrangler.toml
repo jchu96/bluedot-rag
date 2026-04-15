@@ -1,0 +1,29 @@
+name = "bluedot-rag"
+main = "src/index.ts"
+compatibility_date = "2026-04-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Vars (non-secret, set via setup script)
+[vars]
+OPENAI_EXTRACTION_MODEL = "gpt-4.1-nano"
+NOTION_TRANSCRIPTS_DATA_SOURCE_ID = ""
+NOTION_FOLLOWUPS_DATA_SOURCE_ID = ""
+
+# D1 binding (filled in by setup script)
+[[d1_databases]]
+binding = "DB"
+database_name = "bluedot-rag-db-dev"
+database_id = "8548e955-5967-409f-a5a0-9a01eb78ab61"
+
+# Vectorize binding (filled in by setup script)
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "bluedot-rag-vectors-dev"
+
+# Secrets (set via `wrangler secret put`):
+# - OPENAI_API_KEY
+# - NOTION_INTEGRATION_KEY
+# - BLUEDOT_WEBHOOK_SECRET
+
+[observability]
+enabled = true
