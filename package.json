@@ -1,8 +1,8 @@
 {
   "name": "bluedot-rag",
-  "version": "0.1.0-dev",
+  "version": "0.2.0",
   "private": false,
-  "description": "Auto-ingest Bluedot meeting transcripts into Cloudflare D1 + Vectorize and route action items into a Notion Followups inbox.",
+  "description": "Auto-ingest Bluedot meeting transcripts into Cloudflare D1 + Vectorize, route action items into a Notion Followups inbox, and query the indexed calls from Claude.ai via MCP.",
   "license": "MIT",
   "type": "module",
   "scripts": {

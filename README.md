@@ -1,8 +1,8 @@
 # bluedot-rag
 
-> **Auto-ingest [Bluedot](https://bluedothq.com) meeting transcripts into Cloudflare D1 + Vectorize, and route action items into a Notion Followups inbox.**
+> **Auto-ingest [Bluedot](https://bluedothq.com) meeting transcripts into Cloudflare D1 + Vectorize, route action items into a Notion Followups inbox, and query everything from Claude.ai via MCP.**
 >
-> One Cloudflare Worker, one OpenAI key, one Notion integration. ~10 minutes from clone to first ingested call.
+> One Cloudflare Worker, one OpenAI key, one Notion integration, one GitHub OAuth App. ~10 minutes from clone to first ingested call; another ~5 minutes to connect Claude.ai.
 
 ---
 
@@ -19,6 +19,14 @@ Every time you record a meeting in Bluedot, this Worker:
 
 The Followups database is the actual product — a triagable inbox of every commitment from every call. No more "what did I promise to do?" — it's already in your inbox.
 
+On top of the ingestion pipeline, an **MCP (Model Context Protocol) server** lets you query your indexed calls from Claude.ai in natural language:
+
+- _"What did I commit to do for Pierce last week?"_
+- _"Summarize my open followups from Bluedot calls."_
+- _"Find all action items owned by Andy since March."_
+
+Access is gated by GitHub OAuth + a username allowlist (single-user by default — friends fork to host their own).
+
 ---
 
 ## Stack
@@ -32,8 +40,10 @@ The Followups database is the actual product — a triagable inbox of every comm
 | Vector embeddings | OpenAI `text-embedding-3-small` |
 | Output surface | Notion API |
 | Source | Bluedot webhooks (Svix-signed) |
+| MCP auth | `@cloudflare/workers-oauth-provider` + GitHub OAuth |
+| MCP transport | `@modelcontextprotocol/sdk` Streamable HTTP (stateless) |
 
-**No Anthropic, no Neon, no SendGrid required.** Single OpenAI key + single Notion integration.
+**No Anthropic, no Neon, no SendGrid required.** Single OpenAI key + single Notion integration + one GitHub OAuth App.
 
 ---
 
@@ -70,6 +80,8 @@ sequenceDiagram
     W-->>B: 200 OK
 ```
 
+For the MCP query path (Claude.ai → OAuth → tool call → response), see [docs/architecture.md](./docs/architecture.md).
+
 ---
 
 ## 5-minute setup
@@ -82,6 +94,8 @@ sequenceDiagram
 | [OpenAI](https://platform.openai.com) | $5 credit, then ~$0.001/call | Extraction + embeddings |
 | [Notion](https://notion.so) + [integration](https://www.notion.so/profile/integrations) | Yes | Output databases |
 | [Bluedot](https://bluedothq.com) | Trial available | Meeting recordings |
+| [GitHub OAuth App](https://github.com/settings/developers) | Yes | MCP auth (optional — only needed if you want to query from Claude.ai) |
+| [Claude.ai](https://claude.ai) | Yes | MCP client (optional) |
 
 ### Setup
 
@@ -140,8 +154,18 @@ The setup script will prompt for both the token and the parent page ID.
 | `OPENAI_EXTRACTION_MODEL` | var | Default `gpt-4.1-nano`; override to upgrade later |
 | `NOTION_TRANSCRIPTS_DATA_SOURCE_ID` | var | Set by setup script |
 | `NOTION_FOLLOWUPS_DATA_SOURCE_ID` | var | Set by setup script |
+| `GITHUB_CLIENT_ID` | secret | GitHub OAuth App client id (MCP only) |
+| `GITHUB_CLIENT_SECRET` | secret | GitHub OAuth App client secret (MCP only) |
+| `ALLOWED_USERS` | var | Comma-separated GitHub usernames allowed to connect via MCP |
+| `BASE_URL` | var | Public worker origin (e.g. `https://bluedot-rag.<account>.workers.dev`) |
 
 Local dev: `.dev.vars` (gitignored). Production: `wrangler secret put` for secrets, `wrangler.toml` `[vars]` for non-secret config.
+
+Additional bindings (MCP only):
+
+| Binding | Type | Purpose |
+|---------|------|---------|
+| `OAUTH_KV` | KV namespace | Stores OAuth authorization state (5-min TTL) + issued tokens |
 
 ---
 
@@ -149,9 +173,9 @@ Local dev: `.dev.vars` (gitignored). Production: `wrangler secret put` for secre
 
 ```
 src/
-├── index.ts            # fetch entry — delegates to handler
-├── handler.ts          # full pipeline orchestration
-├── env.ts              # Env interface (D1, Vectorize, secrets)
+├── index.ts            # fetch entry — re-exports OAuth-wrapped worker
+├── handler.ts          # ingestion pipeline orchestration
+├── env.ts              # Env interface (D1, Vectorize, KV, secrets)
 ├── webhook-verify.ts   # Svix signature verification
 ├── bluedot.ts          # Bluedot payload normalization
 ├── extract.ts          # OpenAI structured extraction
@@ -160,13 +184,27 @@ src/
 ├── vectorize.ts        # Vectorize upserts
 ├── notion.ts           # Notion API (transcript pages + followup rows)
 ├── schema.ts           # Drizzle SQLite schema
-└── logger.ts           # Structured JSON logging
+├── logger.ts           # Structured JSON logging
+└── mcp/                # MCP server + OAuth
+    ├── index.ts                # OAuthProvider wiring, Hono default app
+    ├── handler.ts              # /mcp API handler (bearer required)
+    ├── tools.ts                # McpServer + Streamable HTTP transport
+    ├── auth/
+    │   ├── github.ts           # /authorize + /auth/github/callback
+    │   └── allowlist.ts        # case-insensitive username check
+    └── tools/
+        ├── search_calls.ts     # Vectorize semantic search
+        ├── get_call.ts         # D1 transcript lookup
+        ├── list_followups.ts   # Notion Followups DB query
+        ├── find_action_items_for.ts  # json_each over action_items
+        └── recent_calls.ts     # recent D1 rows
 
 scripts/
-├── setup.ts            # Interactive provisioning
+├── setup.ts            # Interactive provisioning (now incl. MCP OAuth)
 └── smoke-vectorize.ts  # Vectorize round-trip smoke test
 
 drizzle/                # Numbered SQL migrations
+docs/                   # Architecture, tools reference, auth guide
 test/                   # Test setup helpers + ProvidedEnv typing
 ```
 
@@ -185,7 +223,9 @@ npx vitest
 npx tsc --noEmit
 ```
 
-Tests cover Svix verification, payload normalization, OpenAI extraction (mocked), embeddings chunking, D1 idempotency, Vectorize upsert, Notion page builders, and full handler flows including a **dedup race test** (concurrent webhooks → exactly one D1 row).
+Tests cover Svix verification, payload normalization, OpenAI extraction (mocked), embeddings chunking, D1 idempotency, Vectorize upsert, Notion page builders, full handler flows (incl. a **dedup race test**), MCP auth (GitHub OAuth handler + allowlist + OAuth provider integration: `.well-known/*`, 401 WWW-Authenticate, bearer revocation), and each MCP tool's business logic against real D1 + mocked OpenAI/Vectorize/Notion.
+
+End-to-end MCP transport (`tools/list` + `tools/call` through Streamable HTTP) is exercised live via Claude.ai — vitest-pool-workers' ESM shim can't resolve the `ajv` JSON import pulled in by `@modelcontextprotocol/sdk`, so full-pipeline MCP integration is covered by manual smoke tests rather than automated.
 
 ---
 
@@ -210,6 +250,30 @@ Tests cover Svix verification, payload normalization, OpenAI extraction (mocked)
 **`Cannot read properties of undefined (reading 'call')` from Notion calls:** you imported the `@notionhq/client` SDK. Use direct `fetch` instead — the SDK doesn't work in workerd.
 
 **OpenAI returns nulls in optional fields:** strict json_schema mode requires all properties be in `required`. We handle this in `cleanResult()` (extract.ts).
+
+**MCP: Claude.ai says "couldn't connect":** check that `BASE_URL` in `wrangler.toml` matches your actual worker origin and that the GitHub OAuth App's callback URL ends in `/auth/github/callback`. See [docs/auth.md](./docs/auth.md) for the full troubleshooting tree.
+
+**MCP: 403 after GitHub sign-in:** your GitHub username isn't in `ALLOWED_USERS`. Update `wrangler.toml` and `wrangler deploy` again.
+
+**MCP: `/mcp` returns 401 with `WWW-Authenticate: Bearer resource_metadata=...`:** that's expected — Claude.ai reads the `resource_metadata` URL to discover the OAuth endpoints and restart the flow.
+
+---
+
+## Connect to Claude.ai
+
+Once deployed, add the MCP server to Claude.ai so you can query your calls in natural language.
+
+1. Open [Claude.ai → Settings → Connectors](https://claude.ai/settings/connectors) (or the equivalent in your workspace).
+2. Add a custom MCP server with URL: `https://<your-worker>.workers.dev/mcp`
+3. Claude.ai will redirect you to GitHub. Sign in; GitHub asks if you authorize the "bluedot-rag MCP" app.
+4. GitHub redirects back; the worker checks your username against `ALLOWED_USERS`, mints a bearer token, and sends you back to Claude.ai.
+5. You should now see the 5 tools available in Claude.ai's tool picker. Try:
+   - "Search my calls for IronRidge."
+   - "Show me open followups from Bluedot."
+   - "What action items are assigned to Andy?"
+
+Full MCP tool reference: [docs/tools.md](./docs/tools.md).
+OAuth + GitHub App setup: [docs/auth.md](./docs/auth.md).
 
 ---
 
