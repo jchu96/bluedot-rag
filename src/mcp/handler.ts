@@ -1,9 +1,12 @@
 /**
  * MCP API handler — mounted by OAuthProvider at `/mcp`, bearer required.
+ * Delegates to the Streamable HTTP transport in ./tools.ts.
  *
- * Phase 1 stub: returns 501 Not Implemented. Phase 2 replaces with the real
- * MCP Streamable HTTP transport from @modelcontextprotocol/sdk wiring through
- * ./tools.ts.
+ * The tools module is dynamically imported so loading the OAuth wrapper
+ * for other routes (webhook, /authorize, etc.) doesn't pull the MCP SDK
+ * (and its ajv dep) into scope. `ajv` has a `require('./refs/data.json')`
+ * that vitest-pool-workers' module shim can't resolve — deferring the
+ * import keeps non-MCP tests working.
  */
 import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
 import type { Env } from "../env";
@@ -11,13 +14,8 @@ import type { Env } from "../env";
 type Bindings = Env & { OAUTH_PROVIDER: OAuthHelpers };
 
 export const mcpApiHandler = {
-  async fetch(_request: Request, _env: Bindings, _ctx: ExecutionContext): Promise<Response> {
-    return new Response(
-      JSON.stringify({
-        error: "not_implemented",
-        message: "MCP transport scaffolding lands in Phase 2",
-      }),
-      { status: 501, headers: { "content-type": "application/json" } },
-    );
+  async fetch(request: Request, env: Bindings, _ctx: ExecutionContext): Promise<Response> {
+    const { handleMcpRequest } = await import("./tools");
+    return handleMcpRequest(request, env);
   },
 } satisfies ExportedHandler<Bindings>;
