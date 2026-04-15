@@ -2,6 +2,38 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-04-15
+
+**Rebrand: `bluedot-rag` → `aftercall`.** Fresh worker URL, D1 database, and Vectorize index — all workspace-specific IDs moved out of committed config.
+
+### Changed
+
+- **Worker URL**: `https://bluedot-rag.jeremy-chu.workers.dev` → `https://aftercall.jeremy-chu.workers.dev`
+- **D1 database**: `bluedot-rag-db` → `aftercall-db` (data migrated via `wrangler d1 export` + `execute --file`)
+- **Vectorize index**: `bluedot-rag-vectors` → `aftercall-vectors` (re-embedded from D1 via `scripts/migrate-vectorize.ts`)
+- **GitHub repo**: `jchu96/bluedot-rag` → `jchu96/aftercall` (GitHub auto-redirects old URLs)
+
+### Added
+
+- `wrangler.toml.example` — committed template with placeholders for workspace-specific IDs (D1 `database_id`, KV `id`, Notion data source IDs, `BASE_URL`, `ALLOWED_USERS`).
+- `scripts/setup.ts` — `ensureWranglerToml()` copies `wrangler.toml.example` → `wrangler.toml` on fresh clones before any step reads the config.
+- `scripts/migrate-vectorize.ts` — reusable script that re-embeds all D1 transcripts into a named Vectorize index (for future reindexing / rename ops).
+
+### Security
+
+- `wrangler.toml` is now gitignored. Workspace-specific identifiers (D1 `database_id`, KV namespace `id`, Notion data source IDs) no longer land in the public repo.
+
+### Breaking
+
+Forkers or existing users pulling this release must:
+
+1. Update their Bluedot webhook endpoint URL.
+2. Update their GitHub OAuth App's Homepage URL + Authorization callback URL.
+3. Reconnect the Claude.ai MCP connector to the new worker URL.
+4. On fresh clones, run `npm run setup` — `wrangler.toml` will be generated from the template.
+
+---
+
 ## [0.3.0] — 2026-04-15
 
 **Sentry error tracking + pipeline performance tracing.** Fully optional — leave `SENTRY_DSN` unset and the SDK is a no-op so forkers without a Sentry account can still clone and deploy.
