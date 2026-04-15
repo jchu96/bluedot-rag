@@ -1,4 +1,4 @@
-# bluedot-rag
+# aftercall
 
 Cloudflare Worker that ingests Bluedot meeting transcripts → OpenAI extraction + embeddings → Cloudflare D1 + Vectorize → Notion (transcript pages + Followups task DB). Exposes an MCP server at `/mcp` with GitHub OAuth so the indexed calls are queryable from Claude.ai.
 
@@ -43,9 +43,9 @@ Single user (GitHub username allowlist via `ALLOWED_USERS` env). Friends fork to
 | Deploy (raw) | `npx wrangler deploy` |
 | Tail logs | `npx wrangler tail` |
 | Generate D1 migration | `npx drizzle-kit generate --name <description>` |
-| Apply D1 migration | `npx wrangler d1 migrations apply bluedot-rag-db --remote` |
+| Apply D1 migration | `npx wrangler d1 migrations apply aftercall-db --remote` |
 | Set a secret | `npx wrangler secret put <NAME>` |
-| Reprocess a call | `npx wrangler d1 execute bluedot-rag-db --remote --command "DELETE FROM transcripts WHERE video_id = '...'"` then refire |
+| Reprocess a call | `npx wrangler d1 execute aftercall-db --remote --command "DELETE FROM transcripts WHERE video_id = '...'"` then refire |
 | Rotate MCP bearer (yours) | `POST /auth/revoke` with the current bearer → revokes grant |
 | List KV entries (debug OAuth) | `npx wrangler kv key list --binding OAUTH_KV` |
 | Inspect a KV entry | `npx wrangler kv key get <key> --binding OAUTH_KV` |

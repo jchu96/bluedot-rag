@@ -3,9 +3,13 @@ dist/
 .wrangler/
 .dev.vars
 .dev.vars.local
+# wrangler.toml is generated from wrangler.toml.example by the setup script
+# (contains workspace-specific IDs). Committed template is wrangler.toml.example.
+wrangler.toml
 .env
 .env.local
 .DS_Store
+.claude/
 *.log
 
 # Sentry Config File

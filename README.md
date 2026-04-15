@@ -1,4 +1,4 @@
-# bluedot-rag
+# aftercall
 
 > Your meetings, indexed and queryable from Claude.ai. One Cloudflare Worker turns every Bluedot call into a searchable vector store, a triageable Notion inbox, and an MCP server you can ask questions in natural language.
 
@@ -68,8 +68,8 @@ Then you ask Claude.ai things like:
 ### Run the setup script
 
 ```bash
-git clone https://github.com/jchu96/bluedot-rag.git
-cd bluedot-rag
+git clone https://github.com/jchu96/aftercall.git
+cd aftercall
 npm install
 npx wrangler login
 npm run setup
@@ -178,8 +178,8 @@ End-to-end MCP transport (`tools/list`, `tools/call` through Streamable HTTP) is
 |------|---------|
 | Tail live logs | `npx wrangler tail` |
 | Deploy | `npx wrangler deploy` |
-| Inspect D1 | `npx wrangler d1 execute bluedot-rag-db --remote --command "SELECT ..."` |
-| Query Vectorize | `npx wrangler vectorize get-by-ids bluedot-rag-vectors --ids "1-0,1-1"` |
+| Inspect D1 | `npx wrangler d1 execute aftercall-db --remote --command "SELECT ..."` |
+| Query Vectorize | `npx wrangler vectorize get-by-ids aftercall-vectors --ids "1-0,1-1"` |
 | Reprocess a call | `DELETE FROM transcripts WHERE video_id = '...'` then refire Bluedot webhook |
 | List KV (OAuth) | `npx wrangler kv key list --binding OAUTH_KV` |
 | Revoke your bearer | `curl -X POST https://.../auth/revoke -H "Authorization: Bearer <token>"` |

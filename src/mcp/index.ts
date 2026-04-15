@@ -42,7 +42,7 @@ function createDefaultApp() {
   });
 
   // Health check / root
-  app.get("/", (c) => c.json({ service: "bluedot-rag", status: "ok" }));
+  app.get("/", (c) => c.json({ service: "aftercall", status: "ok" }));
 
   // Fallback: Bluedot webhook on POST. Preserves the pre-MCP behavior where
   // Bluedot hits the worker root with a signed payload.

@@ -66,7 +66,7 @@ describe("createGitHubAuthApp", () => {
       const locUrl = new URL(loc);
       expect(locUrl.searchParams.get("client_id")).toBe("gh-client-test");
       expect(locUrl.searchParams.get("redirect_uri")).toBe(
-        "https://bluedot-rag.test.workers.dev/auth/github/callback",
+        "https://aftercall.test.workers.dev/auth/github/callback",
       );
       expect(locUrl.searchParams.get("scope")).toBe("read:user user:email");
       const ghState = locUrl.searchParams.get("state")!;

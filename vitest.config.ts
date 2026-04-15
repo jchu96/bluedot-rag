@@ -20,7 +20,7 @@ export default defineWorkersConfig({
             GITHUB_CLIENT_ID: "gh-client-test",
             GITHUB_CLIENT_SECRET: "gh-secret-test",
             ALLOWED_USERS: "jchu96",
-            BASE_URL: "https://bluedot-rag.test.workers.dev",
+            BASE_URL: "https://aftercall.test.workers.dev",
           },
         },
       },

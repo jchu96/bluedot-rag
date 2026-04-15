@@ -16,7 +16,7 @@ import { isAllowed } from "./allowlist";
 type Bindings = Env & { OAUTH_PROVIDER: OAuthHelpers };
 
 const GH_STATE_TTL_SECONDS = 300;
-const USER_AGENT = "bluedot-rag";
+const USER_AGENT = "aftercall";
 
 interface GitHubTokenResponse {
   access_token?: string;

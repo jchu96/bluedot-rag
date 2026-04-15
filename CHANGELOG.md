@@ -74,5 +74,5 @@ Initial public release. Bluedot → Cloudflare D1 + Vectorize → Notion Followu
 - Interactive `npm run setup` script that provisions D1, Vectorize, both Notion databases, and writes `.dev.vars` + `wrangler.toml`.
 - Migration script for historical Neon transcripts → D1 + Vectorize + Followups.
 
-[0.2.0]: https://github.com/jchu96/bluedot-rag/releases/tag/v0.2.0
-[0.1.0]: https://github.com/jchu96/bluedot-rag/releases/tag/v0.1.0
+[0.2.0]: https://github.com/jchu96/aftercall/releases/tag/v0.2.0
+[0.1.0]: https://github.com/jchu96/aftercall/releases/tag/v0.1.0

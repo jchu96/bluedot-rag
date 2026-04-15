@@ -93,7 +93,7 @@ describe("OAuthProvider integration", () => {
       const res = await call(new Request("https://worker.test/"));
       expect(res.status).toBe(200);
       const body = (await res.json()) as any;
-      expect(body.service).toBe("bluedot-rag");
+      expect(body.service).toBe("aftercall");
     });
 
     it("POST / without svix signature returns 401 (webhook path)", async () => {

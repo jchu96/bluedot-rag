@@ -8,8 +8,8 @@ MCP access is gated by GitHub OAuth + a username allowlist. This doc walks throu
 
 1. Go to https://github.com/settings/developers → **OAuth Apps** → **New OAuth App**
 2. Fill in:
-   - **Application name:** anything you'll recognize (e.g. `bluedot-rag MCP`)
-   - **Homepage URL:** your deployed Worker URL, e.g. `https://bluedot-rag.<account>.workers.dev`
+   - **Application name:** anything you'll recognize (e.g. `aftercall MCP`)
+   - **Homepage URL:** your deployed Worker URL, e.g. `https://aftercall.<account>.workers.dev`
    - **Authorization callback URL:** Homepage URL **+ `/auth/github/callback`** (exact path matters)
 3. Click **Register application**
 4. On the next screen:
@@ -35,7 +35,7 @@ npx wrangler secret put GITHUB_CLIENT_SECRET   # paste Client Secret
 
 # wrangler.toml [vars]
 #   ALLOWED_USERS = "your-github-username"
-#   BASE_URL = "https://bluedot-rag.<account>.workers.dev"
+#   BASE_URL = "https://aftercall.<account>.workers.dev"
 
 # Deploy
 npx wrangler deploy

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Interactive setup for bluedot-rag.
+ * Interactive setup for aftercall.
  *
  * Provisions the Cloudflare resources (D1, Vectorize) idempotently and
  * creates the Notion databases (Followups + Call Transcripts) in the
@@ -16,8 +16,8 @@ import { existsSync } from "node:fs";
 import * as readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 
-const D1_DB_NAME = "bluedot-rag-db";
-const VECTORIZE_INDEX_NAME = "bluedot-rag-vectors";
+const D1_DB_NAME = "aftercall-db";
+const VECTORIZE_INDEX_NAME = "aftercall-vectors";
 const VECTORIZE_DIMENSIONS = 1536;
 const VECTORIZE_METRIC = "cosine";
 
@@ -129,6 +129,21 @@ function openUrl(url: string): void {
 }
 
 /**
+ * wrangler.toml is gitignored (holds workspace-specific IDs). wrangler.toml.example
+ * is the committed template with placeholders. On a fresh clone there's no
+ * wrangler.toml, so copy the template over before any other step reads it.
+ */
+async function ensureWranglerToml(): Promise<void> {
+  if (existsSync("wrangler.toml")) return;
+  if (!existsSync("wrangler.toml.example")) {
+    fail("Missing both wrangler.toml and wrangler.toml.example — repo is broken.");
+  }
+  const template = await readFile("wrangler.toml.example", "utf8");
+  await writeFile("wrangler.toml", template, "utf8");
+  ok("Initialized wrangler.toml from wrangler.toml.example");
+}
+
+/**
  * Read the current Notion data source IDs from wrangler.toml so we can offer
  * to reuse existing Notion DBs across re-runs (avoids duplicate DB creation).
  */
@@ -193,7 +208,7 @@ async function inferWorkerUrl(): Promise<string | null> {
     const data = (await resp.json()) as { result?: { subdomain?: string } };
     const sub = data.result?.subdomain;
     if (!sub) return null;
-    return `https://bluedot-rag.${sub}.workers.dev`;
+    return `https://aftercall.${sub}.workers.dev`;
   } catch {
     return null;
   }
@@ -590,7 +605,7 @@ async function step8_setupMcpOAuth(
     const inferredUrl = await inferWorkerUrl();
     const homepageExample = inferredUrl
       ? `\x1b[1m${inferredUrl}\x1b[0m`
-      : "`https://bluedot-rag.<account>.workers.dev`";
+      : "`https://aftercall.<account>.workers.dev`";
     const callbackExample = inferredUrl
       ? `\x1b[1m${inferredUrl}/auth/github/callback\x1b[0m`
       : "the same worker URL + `/auth/github/callback`";
@@ -599,7 +614,7 @@ async function step8_setupMcpOAuth(
     console.log("  You'll need a GitHub OAuth App. If you don't have one:");
     console.log("    1. Go to https://github.com/settings/developers");
     console.log("    2. Click \"New OAuth App\"");
-    console.log("    3. Application name: something like `bluedot-rag MCP`");
+    console.log("    3. Application name: something like `aftercall MCP`");
     console.log(`    4. Homepage URL: ${homepageExample}`);
     console.log(`    5. Authorization callback URL: ${callbackExample}`);
     console.log("    6. Generate a client secret and copy both values.");
@@ -888,13 +903,14 @@ function printFinalSummary(args: {
 }
 
 async function main(): Promise<void> {
-  console.log("\n\x1b[1mbluedot-rag — Setup\x1b[0m");
-  console.log("====================");
+  console.log("\n\x1b[1maftercall — Setup\x1b[0m");
+  console.log("==================");
   console.log("Provisions Cloudflare D1 + Vectorize and Notion databases for the pipeline.\n");
 
-  if (!existsSync("wrangler.toml")) {
-    fail(`wrangler.toml not found. Run from the repo root.`);
+  if (!existsSync("package.json")) {
+    fail(`package.json not found. Run from the repo root.`);
   }
+  await ensureWranglerToml();
 
   // Load prior state so steps can offer to reuse values.
   const dev = await loadDevVars();

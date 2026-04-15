@@ -12,8 +12,8 @@ import OpenAI from "openai";
 import { spawnSync } from "node:child_process";
 import { writeFileSync, unlinkSync } from "node:fs";
 
-const D1_NAME = "bluedot-rag-db";
-const VECTORIZE_NAME = "bluedot-rag-vectors";
+const D1_NAME = "aftercall-db";
+const VECTORIZE_NAME = "aftercall-vectors";
 const FOLLOWUPS_DS = "f04d875e-00a1-4241-8ee1-c73217310212";
 
 interface OldRow {

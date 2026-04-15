@@ -7,7 +7,7 @@
  */
 import { createHmac } from "node:crypto";
 
-const TARGET_URL = process.env.WORKER_URL ?? "https://bluedot-rag.jeremy-chu.workers.dev";
+const TARGET_URL = process.env.WORKER_URL ?? "https://aftercall.jeremy-chu.workers.dev";
 const SIGNING_SECRET = process.env.SIGNING_SECRET;
 
 if (!SIGNING_SECRET) {

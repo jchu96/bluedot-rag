@@ -1,0 +1,38 @@
+name = "aftercall"
+main = "src/index.ts"
+compatibility_date = "2026-04-01"
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
+
+# Vars (non-secret, populated by `npm run setup`)
+[vars]
+OPENAI_EXTRACTION_MODEL = "gpt-5-mini"
+NOTION_TRANSCRIPTS_DATA_SOURCE_ID = "<set-by-setup-script>"
+NOTION_FOLLOWUPS_DATA_SOURCE_ID = "<set-by-setup-script>"
+BASE_URL = "<set-by-setup-script>"
+ALLOWED_USERS = "<comma-separated-github-usernames>"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "aftercall-db"
+database_id = "<set-by-setup-script>"
+migrations_dir = "drizzle"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "aftercall-vectors"
+remote = true
+
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id = "<set-by-setup-script>"
+
+# Secrets (set via `wrangler secret put <NAME>`):
+# - OPENAI_API_KEY
+# - NOTION_INTEGRATION_KEY
+# - BLUEDOT_WEBHOOK_SECRET
+# - GITHUB_CLIENT_ID
+# - GITHUB_CLIENT_SECRET
+# - SENTRY_DSN             (optional — enables error tracking + pipeline tracing)
+
+[observability]
+enabled = true

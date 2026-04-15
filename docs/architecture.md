@@ -27,21 +27,21 @@ flowchart TB
         User((User))
     end
 
-    subgraph Worker[Cloudflare Worker — bluedot-rag]
+    subgraph Worker[Cloudflare Worker — aftercall]
         direction TB
         subgraph AuthLayer[OAuthProvider wrapper]
-            WellKnown[/.well-known/*]
-            Authorize[/authorize]
-            GitHubCB[/auth/github/callback]
-            Token[/token]
-            Register[/register]
-            Revoke[/auth/revoke]
+            WellKnown["/.well-known/*"]
+            Authorize["/authorize"]
+            GitHubCB["/auth/github/callback"]
+            Token["/token"]
+            Register["/register"]
+            Revoke["/auth/revoke"]
         end
         subgraph Ingest[Default handler]
-            Webhook[POST /<br/>webhook]
-            Health[GET /<br/>health]
+            Webhook["POST /<br/>webhook"]
+            Health["GET /<br/>health"]
         end
-        MCP[POST /mcp<br/>bearer required]
+        MCP["POST /mcp<br/>bearer required"]
     end
 
     subgraph Storage[Cloudflare storage]
@@ -114,7 +114,7 @@ Runs on every Bluedot webhook. Bluedot fires two events per meeting (~13s apart)
 sequenceDiagram
     autonumber
     participant B as Bluedot
-    participant W as Worker (POST /)
+    participant W as Worker — POST /
     participant O as OpenAI
     participant D as D1
     participant V as Vectorize
@@ -168,7 +168,7 @@ One-time flow when a user first adds the MCP server to Claude.ai. After this, Cl
 ```mermaid
 sequenceDiagram
     autonumber
-    participant U as User (browser)
+    participant U as User — browser
     participant C as Claude.ai
     participant W as Worker
     participant K as OAUTH_KV
@@ -235,7 +235,7 @@ sequenceDiagram
     autonumber
     participant U as User
     participant C as Claude.ai
-    participant W as Worker (/mcp)
+    participant W as Worker — /mcp
     participant D as D1
     participant V as Vectorize
     participant N as Notion
@@ -310,7 +310,7 @@ This design lets every tool be unit-tested without loading the MCP SDK — criti
 
 **Columns nullable by design.** Bluedot's two events fire ~13s apart — the row exists before both arrive. `raw_text` and `summary` are both nullable so the partial state is representable without NULL-wrestling in ingestion code.
 
-### Vectorize `bluedot-rag-vectors` index
+### Vectorize `aftercall-vectors` index
 
 - Dimensions: **1536** (matches `text-embedding-3-small`)
 - Metric: **cosine**
@@ -415,9 +415,9 @@ This design lets every tool be unit-tested without loading the MCP SDK — criti
 | Scenario | Commands |
 |----------|----------|
 | Watch live traffic | `npx wrangler tail` |
-| Re-process a call | `npx wrangler d1 execute bluedot-rag-db --remote --command "DELETE FROM transcripts WHERE video_id = 'meet.google.com/xyz'"` then replay from Bluedot's Svix dashboard |
-| Check a transcript | `npx wrangler d1 execute bluedot-rag-db --remote --command "SELECT id, video_id, title, notion_synced_at FROM transcripts WHERE video_id = '...'"` |
-| Inspect a vector | `npx wrangler vectorize get-by-ids bluedot-rag-vectors --ids "1-0"` |
+| Re-process a call | `npx wrangler d1 execute aftercall-db --remote --command "DELETE FROM transcripts WHERE video_id = 'meet.google.com/xyz'"` then replay from Bluedot's Svix dashboard |
+| Check a transcript | `npx wrangler d1 execute aftercall-db --remote --command "SELECT id, video_id, title, notion_synced_at FROM transcripts WHERE video_id = '...'"` |
+| Inspect a vector | `npx wrangler vectorize get-by-ids aftercall-vectors --ids "1-0"` |
 | List OAuth KV | `npx wrangler kv key list --binding OAUTH_KV` |
 | Revoke your bearer | `curl -X POST https://<worker>/auth/revoke -H "Authorization: Bearer <token>"` |
 | Purge all OAuth state | `npx wrangler kv key list --binding OAUTH_KV \| jq -r '.[].name' \| xargs -I {} npx wrangler kv key delete "{}" --binding OAUTH_KV` |
@@ -499,7 +499,7 @@ All provider KV entries survive — existing bearers keep working.
 1. Edit `src/schema.ts`.
 2. `npx drizzle-kit generate --name <description>` creates `drizzle/NNNN_<description>.sql`.
 3. Review the generated SQL. Migrations run alphabetically — Drizzle's numeric prefixes (`0000_`, `0001_`, …) handle ordering.
-4. `npx wrangler d1 migrations apply bluedot-rag-db --remote` applies to prod.
+4. `npx wrangler d1 migrations apply aftercall-db --remote` applies to prod.
 5. `npx vitest run` applies all migrations locally via `setupD1()` — tests run against the new schema automatically.
 
 ### Local dev

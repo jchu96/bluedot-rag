@@ -1,5 +1,5 @@
 /**
- * MCP server scaffold — registers the 5 bluedot-rag tools on an McpServer
+ * MCP server scaffold — registers the 5 aftercall tools on an McpServer
  * instance, wires it through the Streamable HTTP transport.
  *
  * Stateless mode (sessionIdGenerator undefined): every /mcp request is
@@ -18,7 +18,7 @@ import { recentCalls } from "./tools/recent_calls";
 
 export function createMcpServer(env: Env): McpServer {
   const server = new McpServer(
-    { name: "bluedot-rag", version: "0.2.0" },
+    { name: "aftercall", version: "0.3.0" },
     { capabilities: { tools: {} } },
   );
 
