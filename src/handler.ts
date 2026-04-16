@@ -322,34 +322,42 @@ async function syncToNotion(
   }
 
   let followupsCreated = 0;
-  for (const item of actionItems) {
-    try {
-      await Sentry.startSpan(
-        { name: "bluedot.notion.create_followup", op: "http.client" },
-        () => createFollowupRow(
-          {
-            dataSourceId: deps.env.NOTION_FOLLOWUPS_DATA_SOURCE_ID,
-            task: item.task,
-            owner: item.owner,
-            due_date: item.due_date,
-            meetingTitle: row.title,
-            meetingUrl,
-            videoId,
-          },
-          deps.notion,
-        ),
-      );
-      followupsCreated++;
-    } catch (err) {
-      Sentry.captureException(err, {
-        tags: { notion: "followup" },
-        extra: { transcript_id: transcriptId, task: item.task, video_id: videoId },
-      });
-      log("error", "followup_failed", {
-        transcript_id: transcriptId,
-        task: item.task,
-        error: err instanceof Error ? err.message : String(err),
-      });
+  if (!pageId) {
+    log("warn", "followups_skipped_no_transcript_page", {
+      transcript_id: transcriptId,
+      action_items: actionItems.length,
+    });
+  } else {
+    for (const item of actionItems) {
+      try {
+        await Sentry.startSpan(
+          { name: "bluedot.notion.create_followup", op: "http.client" },
+          () => createFollowupRow(
+            {
+              dataSourceId: deps.env.NOTION_FOLLOWUPS_DATA_SOURCE_ID,
+              task: item.task,
+              owner: item.owner,
+              due_date: item.due_date,
+              meetingTitle: row.title,
+              meetingUrl,
+              videoId,
+              transcriptPageId: pageId,
+            },
+            deps.notion,
+          ),
+        );
+        followupsCreated++;
+      } catch (err) {
+        Sentry.captureException(err, {
+          tags: { notion: "followup" },
+          extra: { transcript_id: transcriptId, task: item.task, video_id: videoId },
+        });
+        log("error", "followup_failed", {
+          transcript_id: transcriptId,
+          task: item.task,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
   log("info", "followups_created", {

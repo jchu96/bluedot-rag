@@ -12,6 +12,8 @@ export interface FollowupInput {
   meetingTitle: string;
   meetingUrl?: string;
   videoId: string;
+  /** Notion page ID of the Transcripts row this followup belongs to (Meeting relation). */
+  transcriptPageId: string;
 }
 
 export interface TranscriptPageInput {
@@ -23,6 +25,10 @@ export interface TranscriptPageInput {
   videoId: string;
   language?: string | null;
   createdAt: Date;
+  /** URL to the Bluedot recording / preview page. */
+  meetingUrl?: string;
+  /** URL to Bluedot's native Notion summary page, when found. Best-effort. */
+  bluedotPageUrl?: string;
 }
 
 const NAME_MAX = 2000;
@@ -32,116 +38,20 @@ function text(content: string) {
   return { type: "text", text: { content } };
 }
 
-/**
- * Notion's API caps each rich_text element's `text.content` at 2000 chars.
- * Long content must be split across multiple rich_text segments within a
- * single block. Prefer splitting on a nearby newline/space to avoid
- * breaking mid-word.
- */
-function richTextSegments(content: string): Array<ReturnType<typeof text>> {
-  if (content.length <= RICH_TEXT_MAX) return [text(content)];
-  const segments: Array<ReturnType<typeof text>> = [];
-  let cursor = 0;
-  while (cursor < content.length) {
-    let end = Math.min(cursor + RICH_TEXT_MAX, content.length);
-    if (end < content.length) {
-      const window = content.slice(cursor, end);
-      const lastNewline = window.lastIndexOf("\n");
-      const lastSpace = window.lastIndexOf(" ");
-      const breakAt = lastNewline >= RICH_TEXT_MAX * 0.5
-        ? lastNewline
-        : lastSpace >= RICH_TEXT_MAX * 0.5
-          ? lastSpace
-          : -1;
-      if (breakAt > 0) end = cursor + breakAt + 1;
-    }
-    segments.push(text(content.slice(cursor, end)));
-    cursor = end;
-  }
-  return segments;
-}
-
-function paragraph(content: string) {
+function paragraphLink(label: string, url: string) {
   return {
     object: "block",
     type: "paragraph",
-    paragraph: { rich_text: richTextSegments(content) },
+    paragraph: {
+      rich_text: [
+        {
+          type: "text",
+          text: { content: label, link: { url } },
+          annotations: { bold: true },
+        },
+      ],
+    },
   };
-}
-
-function heading(content: string) {
-  return {
-    object: "block",
-    type: "heading_2",
-    heading_2: { rich_text: [text(content)] },
-  };
-}
-
-function heading3(content: string) {
-  return {
-    object: "block",
-    type: "heading_3",
-    heading_3: { rich_text: richTextSegments(content) },
-  };
-}
-
-function bulletedItem(content: string) {
-  return {
-    object: "block",
-    type: "bulleted_list_item",
-    bulleted_list_item: { rich_text: richTextSegments(content) },
-  };
-}
-
-/**
- * Convert Bluedot's markdown-ish summary into structured Notion blocks.
- *
- * Handles:
- * - `## heading` → heading_2
- * - `### heading` → heading_3
- * - `# heading` → heading_2 (Notion has heading_1 but we collapse for visual weight)
- * - `- item` / `* item` / `• item` → bulleted_list_item
- * - blank line → paragraph boundary
- * - everything else → paragraph (consecutive non-blank lines joined with space)
- *
- * Always safe: plain-text input with no markers produces paragraph blocks.
- */
-function summaryToBlocks(summary: string): Array<Record<string, unknown>> {
-  const blocks: Array<Record<string, unknown>> = [];
-  const lines = summary.split("\n");
-  let buffer: string[] = [];
-
-  const flushParagraph = () => {
-    if (buffer.length === 0) return;
-    const joined = buffer.join(" ").trim();
-    if (joined) blocks.push(paragraph(joined));
-    buffer = [];
-  };
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line) {
-      flushParagraph();
-      continue;
-    }
-    const h3 = /^#{3}\s+(.+)$/.exec(line);
-    const h2 = /^#{1,2}\s+(.+)$/.exec(line);
-    const bullet = /^[-*•]\s+(.+)$/.exec(line);
-    if (h3) {
-      flushParagraph();
-      blocks.push(heading3(h3[1]));
-    } else if (h2) {
-      flushParagraph();
-      blocks.push(heading(h2[1]));
-    } else if (bullet) {
-      flushParagraph();
-      blocks.push(bulletedItem(bullet[1]));
-    } else {
-      buffer.push(line);
-    }
-  }
-  flushParagraph();
-  return blocks;
 }
 
 /**
@@ -152,18 +62,10 @@ function summaryToBlocks(summary: string): Array<Record<string, unknown>> {
  */
 function parseIsoDate(input: string | undefined): { date: { start: string } | null } {
   if (!input) return { date: null };
-  // Accept YYYY-MM-DD or full ISO 8601; reject anything else
   if (/^\d{4}-\d{2}-\d{2}(T|$)/.test(input)) {
     return { date: { start: input } };
   }
   return { date: null };
-}
-
-function formatActionItem(item: ActionItem): string {
-  const parts: string[] = [item.task];
-  if (item.owner) parts.push(`— ${item.owner}`);
-  if (item.due_date) parts.push(`(due ${item.due_date})`);
-  return parts.join(" ");
 }
 
 /**
@@ -172,17 +74,18 @@ function formatActionItem(item: ActionItem): string {
  */
 function followupTitle(task: string, due_date: string | undefined): string {
   if (!due_date) return task;
-  if (/^\d{4}-\d{2}-\d{2}(T|$)/.test(due_date)) return task; // ISO goes to Date field
+  if (/^\d{4}-\d{2}-\d{2}(T|$)/.test(due_date)) return task;
   return `${task} (due ${due_date})`;
 }
 
 /**
  * Build a Notion row for the Followups DB.
  *
- * Schema assumed (created by setup script):
+ * Schema (set up by scripts/setup.ts):
  *   Name (title), Status (select), Priority (select), Due (date),
  *   Owner (rich_text), Source (select), Source Link (url),
- *   Meeting Title (rich_text), Created (created_time, auto)
+ *   Meeting Title (rich_text), Video ID (rich_text),
+ *   Meeting (relation → Transcripts DB)
  */
 export function buildFollowupRowBody(input: FollowupInput): {
   parent: { type: "data_source_id"; data_source_id: string };
@@ -200,17 +103,25 @@ export function buildFollowupRowBody(input: FollowupInput): {
       "Source Link": input.meetingUrl ? { url: input.meetingUrl } : { url: null },
       "Meeting Title": { rich_text: [text(input.meetingTitle.slice(0, RICH_TEXT_MAX))] },
       "Video ID": { rich_text: [text(input.videoId.slice(0, RICH_TEXT_MAX))] },
+      Meeting: { relation: [{ id: input.transcriptPageId }] },
     },
   };
 }
 
 /**
- * Build a Notion page for the Call Transcripts DB.
+ * Build a slim Notion page for the Call Transcripts DB.
  *
- * Schema assumed (created by setup script):
+ * aftercall's Transcripts page is a **metadata hub**, not a summary archive —
+ * Bluedot's native Notion sync owns the rich summary content. This page
+ * exists so Followups can relate to a single Notion row per meeting, and so
+ * you get filterable DB views (Date, Participants) that Bluedot doesn't provide.
+ *
+ * Schema (set up by scripts/setup.ts):
  *   Name (title), Date (date), Participants (multi_select),
- *   Summary (rich_text), Action Items (rich_text),
- *   Video ID (rich_text), Language (rich_text)
+ *   Video ID (rich_text), Language (rich_text),
+ *   Recording URL (url), Bluedot Page (url)
+ *
+ * Page body: at most one paragraph block linking to the Bluedot recording.
  */
 export function buildTranscriptPageBody(input: TranscriptPageInput): {
   parent: { type: "data_source_id"; data_source_id: string };
@@ -223,39 +134,19 @@ export function buildTranscriptPageBody(input: TranscriptPageInput): {
     .filter((n) => n.length > 0)
     .map((n) => ({ name: n.replace(/,/g, "").slice(0, 100) }));
 
-  const actionItemsText =
-    input.actionItems.length > 0
-      ? input.actionItems.map((a) => `• ${formatActionItem(a)}`).join("\n")
-      : "";
-
   const properties = {
     Name: { title: [text(input.title.slice(0, NAME_MAX))] },
     Date: { date: { start: date } },
     Participants: { multi_select: participantNames },
-    Summary: { rich_text: [text(input.summary.slice(0, RICH_TEXT_MAX))] },
-    "Action Items": { rich_text: [text(actionItemsText.slice(0, RICH_TEXT_MAX))] },
     "Video ID": { rich_text: [text(input.videoId.slice(0, RICH_TEXT_MAX))] },
     Language: { rich_text: [text((input.language ?? "").slice(0, RICH_TEXT_MAX))] },
+    "Recording URL": input.meetingUrl ? { url: input.meetingUrl } : { url: null },
+    "Bluedot Page": input.bluedotPageUrl ? { url: input.bluedotPageUrl } : { url: null },
   };
 
-  const children: Array<Record<string, unknown>> = [...summaryToBlocks(input.summary)];
-
-  if (input.actionItems.length > 0) {
-    children.push(heading("Action Items"));
-    for (const item of input.actionItems) {
-      children.push(bulletedItem(formatActionItem(item)));
-    }
-  }
-
-  if (input.participants.length > 0) {
-    children.push(heading("Participants"));
-    for (const p of input.participants) {
-      const label = [p.name, p.email ? `<${p.email}>` : "", p.role ? `(${p.role})` : ""]
-        .filter(Boolean)
-        .join(" ");
-      children.push(bulletedItem(label));
-    }
-  }
+  const children: Array<Record<string, unknown>> = input.meetingUrl
+    ? [paragraphLink("View on Bluedot", input.meetingUrl)]
+    : [];
 
   return {
     parent: { type: "data_source_id", data_source_id: input.dataSourceId },
@@ -285,7 +176,7 @@ export async function createTranscriptPage(
 /**
  * Build a NotionDeps from an integration token; uses direct fetch to
  * https://api.notion.com/v1/pages (NOT the @notionhq/client SDK, which
- * fails in CF Workers runtime — lesson learned from prior pipeline).
+ * fails in CF Workers runtime).
  */
 export function createNotionDeps(integrationKey: string): NotionDeps {
   return {

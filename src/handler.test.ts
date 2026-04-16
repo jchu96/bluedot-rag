@@ -168,6 +168,41 @@ describe("handleWebhook — both events arrive", () => {
     expect(deps2.notion.pagesCreate).toHaveBeenCalledTimes(3);
   });
 
+  it("threads transcript page id into every Followup Meeting relation", async () => {
+    const deps1 = makeDeps();
+    await handleWebhook(await signedRequest(transcriptPayload()), deps1);
+
+    const deps2 = makeDeps();
+    await handleWebhook(await signedRequest(summaryPayload()), deps2);
+
+    // Call 0 is createTranscriptPage → mock returns { id: "page_1" }
+    // Calls 1+ are createFollowupRow → should carry Meeting: { relation: [{ id: "page_1" }] }
+    const calls = (deps2.notion.pagesCreate as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls.length).toBe(3);
+    const followupBodies = calls.slice(1).map((c) => c[0] as { properties: Record<string, unknown> });
+    for (const body of followupBodies) {
+      expect(body.properties.Meeting).toEqual({
+        relation: [{ id: "page_1" }],
+      });
+    }
+  });
+
+  it("skips followup creation when transcript page creation fails (no Meeting relation target)", async () => {
+    const deps1 = makeDeps();
+    await handleWebhook(await signedRequest(transcriptPayload()), deps1);
+
+    const pagesCreate = vi.fn()
+      .mockRejectedValueOnce(new Error("Notion 400: bad schema")) // transcript page fails
+      .mockResolvedValue({ id: "should_not_be_called", url: "" });
+    const deps2 = makeDeps({ notion: { pagesCreate } });
+
+    const res = await handleWebhook(await signedRequest(summaryPayload()), deps2);
+    expect(res.status).toBe(200); // Notion failure is non-fatal
+
+    // Only 1 call (the failing transcript page), no followups
+    expect(pagesCreate).toHaveBeenCalledTimes(1);
+  });
+
   it("retried summary event after Notion already synced does not double-post", async () => {
     const deps1 = makeDeps();
     await handleWebhook(await signedRequest(transcriptPayload()), deps1);
