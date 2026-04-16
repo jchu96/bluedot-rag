@@ -101,6 +101,104 @@ describe("buildTranscriptPageBody", () => {
     expect(json).toContain("Send notes");
     expect(json).toContain("Alice");
   });
+
+  it("parses ## headings in summary into Notion heading_2 blocks", () => {
+    const body = buildTranscriptPageBody({
+      dataSourceId: "ds_transcripts",
+      title: "Meeting",
+      summary: "## Overview\n\nWe reviewed Q2.\n\n## Next Steps\n\nFollow up with sales.",
+      participants: [],
+      actionItems: [],
+      videoId: "vid_md",
+      createdAt: new Date("2026-04-16T19:00:00Z"),
+    });
+
+    const blocks = body.children as Array<{ type: string; heading_2?: { rich_text: Array<{ text: { content: string } }> }; paragraph?: { rich_text: Array<{ text: { content: string } }> } }>;
+    const headings = blocks.filter((b) => b.type === "heading_2").map((b) => b.heading_2!.rich_text[0].text.content);
+    expect(headings).toContain("Overview");
+    expect(headings).toContain("Next Steps");
+    const paragraphs = blocks.filter((b) => b.type === "paragraph").map((b) => b.paragraph!.rich_text[0].text.content);
+    expect(paragraphs).toContain("We reviewed Q2.");
+    expect(paragraphs).toContain("Follow up with sales.");
+  });
+
+  it("parses - bullets in summary into bulleted_list_item blocks", () => {
+    const body = buildTranscriptPageBody({
+      dataSourceId: "ds_transcripts",
+      title: "Meeting",
+      summary: "## Action Items\n\n- Draft spec\n- Review with team\n- Ship by Friday",
+      participants: [],
+      actionItems: [],
+      videoId: "vid_bul",
+      createdAt: new Date("2026-04-16T19:00:00Z"),
+    });
+
+    const blocks = body.children as Array<{ type: string; bulleted_list_item?: { rich_text: Array<{ text: { content: string } }> } }>;
+    const bullets = blocks
+      .filter((b) => b.type === "bulleted_list_item")
+      .map((b) => b.bulleted_list_item!.rich_text[0].text.content);
+    expect(bullets).toEqual(expect.arrayContaining(["Draft spec", "Review with team", "Ship by Friday"]));
+  });
+
+  it("parses ### into heading_3 blocks", () => {
+    const body = buildTranscriptPageBody({
+      dataSourceId: "ds_transcripts",
+      title: "Meeting",
+      summary: "### Detail\n\nSome text.",
+      participants: [],
+      actionItems: [],
+      videoId: "vid_h3",
+      createdAt: new Date("2026-04-16T19:00:00Z"),
+    });
+
+    const h3 = (body.children as Array<{ type: string; heading_3?: { rich_text: Array<{ text: { content: string } }> } }>)
+      .find((b) => b.type === "heading_3");
+    expect(h3?.heading_3?.rich_text[0].text.content).toBe("Detail");
+  });
+
+  it("treats plain-text summaries with no markdown as paragraph blocks", () => {
+    const body = buildTranscriptPageBody({
+      dataSourceId: "ds_transcripts",
+      title: "Meeting",
+      summary: "Paragraph one.\n\nParagraph two.",
+      participants: [],
+      actionItems: [],
+      videoId: "vid_plain",
+      createdAt: new Date("2026-04-16T19:00:00Z"),
+    });
+
+    const paragraphs = (body.children as Array<{ type: string; paragraph?: { rich_text: Array<{ text: { content: string } }> } }>)
+      .filter((b) => b.type === "paragraph")
+      .map((b) => b.paragraph!.rich_text[0].text.content);
+    expect(paragraphs).toContain("Paragraph one.");
+    expect(paragraphs).toContain("Paragraph two.");
+  });
+
+  it("splits long summaries across multiple rich_text segments (Notion 2000-char cap)", () => {
+    const longSummary = "sentence. ".repeat(1200); // ~12,000 chars
+    const body = buildTranscriptPageBody({
+      dataSourceId: "ds_transcripts",
+      title: "Long meeting",
+      summary: longSummary,
+      participants: [],
+      actionItems: [],
+      videoId: "vid_long",
+      createdAt: new Date("2026-04-16T19:00:00Z"),
+    });
+
+    const summaryParagraph = (body.children as Array<{
+      type: string;
+      paragraph?: { rich_text: Array<{ text: { content: string } }> };
+    }>).find((c) => c.type === "paragraph");
+    expect(summaryParagraph).toBeDefined();
+    const segments = summaryParagraph!.paragraph!.rich_text;
+    expect(segments.length).toBeGreaterThan(1);
+    for (const seg of segments) {
+      expect(seg.text.content.length).toBeLessThanOrEqual(2000);
+    }
+    const rejoined = segments.map((s) => s.text.content).join("");
+    expect(rejoined).toBe(longSummary.trim());
+  });
 });
 
 describe("createFollowupRow", () => {

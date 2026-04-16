@@ -32,11 +32,40 @@ function text(content: string) {
   return { type: "text", text: { content } };
 }
 
+/**
+ * Notion's API caps each rich_text element's `text.content` at 2000 chars.
+ * Long content must be split across multiple rich_text segments within a
+ * single block. Prefer splitting on a nearby newline/space to avoid
+ * breaking mid-word.
+ */
+function richTextSegments(content: string): Array<ReturnType<typeof text>> {
+  if (content.length <= RICH_TEXT_MAX) return [text(content)];
+  const segments: Array<ReturnType<typeof text>> = [];
+  let cursor = 0;
+  while (cursor < content.length) {
+    let end = Math.min(cursor + RICH_TEXT_MAX, content.length);
+    if (end < content.length) {
+      const window = content.slice(cursor, end);
+      const lastNewline = window.lastIndexOf("\n");
+      const lastSpace = window.lastIndexOf(" ");
+      const breakAt = lastNewline >= RICH_TEXT_MAX * 0.5
+        ? lastNewline
+        : lastSpace >= RICH_TEXT_MAX * 0.5
+          ? lastSpace
+          : -1;
+      if (breakAt > 0) end = cursor + breakAt + 1;
+    }
+    segments.push(text(content.slice(cursor, end)));
+    cursor = end;
+  }
+  return segments;
+}
+
 function paragraph(content: string) {
   return {
     object: "block",
     type: "paragraph",
-    paragraph: { rich_text: [text(content)] },
+    paragraph: { rich_text: richTextSegments(content) },
   };
 }
 
@@ -48,12 +77,71 @@ function heading(content: string) {
   };
 }
 
+function heading3(content: string) {
+  return {
+    object: "block",
+    type: "heading_3",
+    heading_3: { rich_text: richTextSegments(content) },
+  };
+}
+
 function bulletedItem(content: string) {
   return {
     object: "block",
     type: "bulleted_list_item",
-    bulleted_list_item: { rich_text: [text(content)] },
+    bulleted_list_item: { rich_text: richTextSegments(content) },
   };
+}
+
+/**
+ * Convert Bluedot's markdown-ish summary into structured Notion blocks.
+ *
+ * Handles:
+ * - `## heading` → heading_2
+ * - `### heading` → heading_3
+ * - `# heading` → heading_2 (Notion has heading_1 but we collapse for visual weight)
+ * - `- item` / `* item` / `• item` → bulleted_list_item
+ * - blank line → paragraph boundary
+ * - everything else → paragraph (consecutive non-blank lines joined with space)
+ *
+ * Always safe: plain-text input with no markers produces paragraph blocks.
+ */
+function summaryToBlocks(summary: string): Array<Record<string, unknown>> {
+  const blocks: Array<Record<string, unknown>> = [];
+  const lines = summary.split("\n");
+  let buffer: string[] = [];
+
+  const flushParagraph = () => {
+    if (buffer.length === 0) return;
+    const joined = buffer.join(" ").trim();
+    if (joined) blocks.push(paragraph(joined));
+    buffer = [];
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      flushParagraph();
+      continue;
+    }
+    const h3 = /^#{3}\s+(.+)$/.exec(line);
+    const h2 = /^#{1,2}\s+(.+)$/.exec(line);
+    const bullet = /^[-*•]\s+(.+)$/.exec(line);
+    if (h3) {
+      flushParagraph();
+      blocks.push(heading3(h3[1]));
+    } else if (h2) {
+      flushParagraph();
+      blocks.push(heading(h2[1]));
+    } else if (bullet) {
+      flushParagraph();
+      blocks.push(bulletedItem(bullet[1]));
+    } else {
+      buffer.push(line);
+    }
+  }
+  flushParagraph();
+  return blocks;
 }
 
 /**
@@ -150,10 +238,7 @@ export function buildTranscriptPageBody(input: TranscriptPageInput): {
     Language: { rich_text: [text((input.language ?? "").slice(0, RICH_TEXT_MAX))] },
   };
 
-  const children: Array<Record<string, unknown>> = [
-    heading("Summary"),
-    paragraph(input.summary),
-  ];
+  const children: Array<Record<string, unknown>> = [...summaryToBlocks(input.summary)];
 
   if (input.actionItems.length > 0) {
     children.push(heading("Action Items"));
