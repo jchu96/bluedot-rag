@@ -45,6 +45,23 @@ In Notion: Settings → Integrations → (your integration) → confirm Transcri
 
 ---
 
+## Notes from the 2026-04-16 execution
+
+**Backfill was NOT run** on jchu96's production data. Pre-flight discovered the Video ID values in existing Followups rows did not match any Transcripts rows:
+
+- Followups used Bluedot's internal Video ID (`69e147ed5f1492f692bb0122`) or the bare Google Meet slug (`meet.google.com/ahn-mfrm-hfm`)
+- Transcripts used `https://meet.google.com/...` / `meet.google.com/...` for different meetings entirely — none overlapped
+
+This happened because historical rows were created across code-path churn (pre-rebrand pipelines, `migrate-from-neon.ts`, different `videoId` conventions). Net: 11 historical Followups couldn't be automatically linked.
+
+**Decision:** skip automated backfill. Historical Followups stay text-only (they keep `Meeting Title` + `Video ID` text properties, just no `Meeting` relation). New Followups created by the redeployed worker get the relation automatically.
+
+**Rationale:** historical followups are either already triaged or stale; retroactive linking isn't worth the engineering cost of rebuilding the Transcripts DB from D1 (which would be path B, deferred).
+
+**For forkers:** your data may be clean. Run the dry-run first — if matches look right, run live. If your data is mismatched like jchu96's was, decide whether to skip, rebuild Transcripts from D1, or clean up manually.
+
+---
+
 ## Phase 1b: Notion schema + backfill
 
 ### Step 1: Update schemas via Notion UI
